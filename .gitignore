@@ -1,0 +1,61 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Virtual environment ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/*.bat
+env/*.sh
+env/pip.ini
+env/gitconfig
+env/requirements.win.txt
+
+# ── Third-party source (fetched by install.bat, not vendored) ────────────────
+WorldGen/
+
+# ── Models and caches (downloaded by the user, tens of GB) ───────────────────
+models/*
+!models/.gitkeep
+models/sr/*
+!models/sr/.gitkeep
+cache/
+wheels/
+tools/python/
+
+# ── Generated / runtime state ────────────────────────────────────────────────
+outputs/*
+!outputs/.gitkeep
+logs/*
+!logs/.gitkeep
+tmp/
+state.json
+state.json.tmp
+
+# ── App runtime data ─────────────────────────────────────────────────────────
+app/uploads/
+app/logs/
+app/.browser/
+app/.browser-cdp/
+app/.browser-shot/
+app/screenshots/*.png
+!app/screenshots/README.md
+
+# ── Local scratch ────────────────────────────────────────────────────────────
+_probe/
+qa/
+docs/internal/
+.workbuddy/
+.env
+*.local
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
