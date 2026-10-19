@@ -226,7 +226,7 @@ def step_da2() -> None:
         pip("install", "--no-deps", str(da2_dir))
     else:
         log("未找到 DA-2 子模块，改为从 GitHub 安装 ...")
-        pip("install", "--no-deps", cfg.proxied("git+" + cfg.DA2_REPO_SUBDIR[len("git+"):]))
+        pip("install", "--no-deps", cfg.proxied(cfg.DA2_REPO_SUBDIR))
 
     if not has_module("da2", "model"):
         die("da2 安装后无法 import。")
@@ -274,7 +274,7 @@ def verify() -> bool:
     """Import-level smoke test. Does not touch the GPU."""
     checks = [
         ("torch", "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"),
-        ("nunchaku", "import nunchaku; print('nunchaku', nunchaku.__version__)"),
+        ("nunchaku", "import nunchaku; print('nunchaku OK')"),
         ("worldgen", "import worldgen; print('worldgen OK')"),
         ("da2", "from da2.model.spherevit import SphereViT; print('da2 OK')"),
         ("viser", "import viser; print('viser', viser.__version__)"),
