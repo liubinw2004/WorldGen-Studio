@@ -1,12 +1,15 @@
 @echo off
-chcp 65001 >nul
+rem ===========================================================================
+rem  WorldGen Studio - launcher
+rem  Starts the local server and opens the app window.
+rem  Paths are resolved from this script's own location, so the project can
+rem  live anywhere.
+rem
+rem  NOTE: ASCII-only on purpose -- cmd.exe mis-parses UTF-8 Chinese in .bat.
+rem ===========================================================================
 setlocal EnableExtensions
 title WorldGen Studio
 
-rem ---------------------------------------------------------------------------
-rem  Start the local server and open the app window.
-rem  Works from any directory: ROOT is resolved from this script's location.
-rem ---------------------------------------------------------------------------
 pushd "%~dp0"
 set "ROOT=%CD%"
 set "PORT=7870"
@@ -14,7 +17,7 @@ set "URL=http://127.0.0.1:%PORT%"
 set "PYW=%ROOT%\venv\Scripts\pythonw.exe"
 set "LOG=%ROOT%\app\logs\server.log"
 
-rem ---- keep temp files inside the project (no stray writes elsewhere) -------
+rem ---- keep temp files inside the project ----------------------------------
 if not exist "%ROOT%\tmp" mkdir "%ROOT%\tmp"
 set "TMPDIR=%ROOT%\tmp"
 set "TEMP=%ROOT%\tmp"
@@ -23,22 +26,21 @@ set "TMP=%ROOT%\tmp"
 echo.
 echo   WorldGen Studio
 echo   ---------------------------------------------
-echo   本地 3D 场景生成工作台
-echo   项目目录: %ROOT%
+echo   Project root: %ROOT%
 echo.
 
 rem ---- prerequisites --------------------------------------------------------
 if not exist "%PYW%" (
-    echo   [错误] 没有找到虚拟环境: %ROOT%\venv
-    echo   请先双击运行 install.bat 完成安装。
+    echo   [ERROR] Virtual environment not found: %ROOT%\venv
+    echo   Run install.bat first.
     echo.
     pause
     popd
     exit /b 1
 )
 if not exist "%ROOT%\WorldGen\demo.py" (
-    echo   [错误] 没有找到 WorldGen 源码: %ROOT%\WorldGen
-    echo   请先双击运行 install.bat 完成安装。
+    echo   [ERROR] WorldGen sources not found: %ROOT%\WorldGen
+    echo   Run install.bat first.
     echo.
     pause
     popd
@@ -48,12 +50,12 @@ if not exist "%ROOT%\WorldGen\demo.py" (
 rem ---- already running? -----------------------------------------------------
 netstat -ano | findstr /R /C:":%PORT% .*LISTENING" >nul 2>&1
 if not errorlevel 1 (
-    echo   [1/2] 服务已在运行
+    echo   [1/2] Server already running
     goto open
 )
 
 rem ---- start server ---------------------------------------------------------
-echo   [1/2] 正在启动本地服务...
+echo   [1/2] Starting local server ...
 start "" /b "%PYW%" "%ROOT%\app\server.py"
 
 set /a TRY=0
@@ -66,13 +68,13 @@ ping -n 2 127.0.0.1 >nul
 goto wait
 
 :ready
-echo         服务已就绪  %URL%
+echo         Server ready at %URL%
 goto open
 
 :failed
 echo.
-echo   [错误] 服务启动超时。
-echo   日志: %LOG%
+echo   [ERROR] The server did not start in time.
+echo   Log: %LOG%
 echo.
 if exist "%LOG%" powershell -NoProfile -Command "Get-Content -LiteralPath '%LOG%' -Tail 25"
 echo.
@@ -81,9 +83,9 @@ popd
 exit /b 1
 
 :open
-echo   [2/2] 正在打开应用窗口...
-rem Prefer an Edge/Chrome --app window (frameless, looks like a native app);
-rem fall back to the default browser if neither is installed.
+echo   [2/2] Opening the app window ...
+rem Prefer an Edge/Chrome --app window (frameless, feels native);
+rem fall back to the default browser.
 set "BROWSER="
 for %%P in (
     "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"

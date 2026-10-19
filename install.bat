@@ -1,40 +1,42 @@
 @echo off
-chcp 65001 >nul
+rem ===========================================================================
+rem  WorldGen Studio - installer
+rem
+rem  Usage:
+rem    install.bat            normal install (official sources)
+rem    install.bat --mirror   mainland-China networks (hf-mirror + GitHub proxy)
+rem
+rem  This script only finds Python, creates the venv, and hands over to
+rem  scripts\bootstrap.py. Model weights are NOT downloaded here -- they are
+rem  large and partly gated; see README "Model setup".
+rem
+rem  NOTE: this file is deliberately ASCII-only. cmd.exe mis-parses UTF-8
+rem  Chinese text in .bat files, which makes scripts fail with bogus
+rem  "'...' is not recognized" errors.
+rem ===========================================================================
 setlocal EnableExtensions
-title WorldGen Studio - 安装
-
-rem ===========================================================================
-rem  WorldGen Studio 一键安装
-rem
-rem  用法:
-rem    install.bat            正常安装（官方源）
-rem    install.bat --mirror   国内网络（hf-mirror + GitHub 代理 + 清华/腾讯 PyPI）
-rem
-rem  这个脚本只做三件事：找到 Python、建虚拟环境、把剩下交给
-rem  scripts\bootstrap.py。模型权重不在安装范围内，装完会打印清单。
-rem ===========================================================================
+title WorldGen Studio - installer
 
 pushd "%~dp0"
 set "ROOT=%CD%"
 
 echo.
-echo   WorldGen Studio 安装程序
+echo   WorldGen Studio - installer
 echo   ---------------------------------------------
-echo   项目目录: %ROOT%
+echo   Project root: %ROOT%
 echo.
 
-rem ---- 参数 ----------------------------------------------------------------
 set "MIRROR_ARG="
 if /I "%~1"=="--mirror" set "MIRROR_ARG=--mirror"
 if defined MIRROR_ARG (
-    echo   模式: 国内镜像
+    echo   Mode: China mirrors
 ) else (
-    echo   模式: 官方源 ^(国内网络请改用 install.bat --mirror^)
+    echo   Mode: official sources  ^(use install.bat --mirror in mainland China^)
 )
 echo.
 
-rem ---- 1. 定位 Python 3.11/3.12 -------------------------------------------
-echo   [1/4] 查找 Python 3.11 / 3.12 ...
+rem ---- 1. locate Python 3.11/3.12 -------------------------------------------
+echo   [1/4] Looking for Python 3.11 / 3.12 ...
 set "BASE_PY="
 
 py -3.12 -c "import sys" >nul 2>&1
@@ -54,11 +56,12 @@ if not defined BASE_PY (
 
 if not defined BASE_PY (
     echo.
-    echo   [错误] 没有找到 Python 3.11 或 3.12。
+    echo   [ERROR] Python 3.11 or 3.12 not found.
     echo.
-    echo   请先安装 Python 3.12:  https://www.python.org/downloads/
-    echo   安装时务必勾选 "Add python.exe to PATH"。
-    echo   注意: 3.13 无法使用本项目（torch cu128 / nunchaku 只提供 cp312 轮子）。
+    echo   Install Python 3.12 from https://www.python.org/downloads/
+    echo   and tick "Add python.exe to PATH" during setup.
+    echo   Python 3.13 will NOT work: torch cu128 and nunchaku only ship
+    echo   cp312 wheels.
     echo.
     pause
     popd
@@ -66,13 +69,13 @@ if not defined BASE_PY (
 )
 
 for /f "delims=" %%v in ('%BASE_PY% -c "import sys;print(sys.version.split()[0])"') do set "PYVER=%%v"
-echo         使用 Python %PYVER%  ^(%BASE_PY%^)
+echo         Using Python %PYVER%  ^(%BASE_PY%^)
 
-rem ---- 2. 生成 env 配置 ----------------------------------------------------
-echo   [2/4] 生成环境配置 ...
+rem ---- 2. generate env config ----------------------------------------------
+echo   [2/4] Generating environment config ...
 %BASE_PY% "%ROOT%\config.py" --emit >nul
 if errorlevel 1 (
-    echo   [错误] 生成配置失败。
+    echo   [ERROR] config.py --emit failed.
     pause
     popd
     exit /b 1
@@ -81,38 +84,36 @@ call "%ROOT%\env\set_env.bat"
 set "PIP_CONFIG_FILE=%ROOT%\env\pip.ini"
 if defined MIRROR_ARG set "WORLDGEN_MIRROR=1"
 
-rem ---- 3. 创建虚拟环境 -----------------------------------------------------
-echo   [3/4] 准备虚拟环境 ...
+rem ---- 3. create the venv --------------------------------------------------
+echo   [3/4] Preparing virtual environment ...
 if exist "%ROOT%\venv\Scripts\python.exe" (
-    echo         虚拟环境已存在，跳过创建
+    echo         venv already exists, skipping
 ) else (
     %BASE_PY% -m venv "%ROOT%\venv"
     if errorlevel 1 (
-        echo   [错误] 创建虚拟环境失败。
+        echo   [ERROR] Failed to create the virtual environment.
         pause
         popd
         exit /b 1
     )
-    echo         已创建 venv
+    echo         venv created
 )
 
 "%ROOT%\venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
-if errorlevel 1 (
-    echo   [警告] pip 升级失败，继续尝试安装依赖。
-)
+if errorlevel 1 echo   [WARN] pip upgrade failed, continuing anyway.
 
-rem ---- 4. 安装依赖 ---------------------------------------------------------
-echo   [4/4] 安装依赖（首次约 10-20 分钟，取决于网速）...
+rem ---- 4. install dependencies ---------------------------------------------
+echo   [4/4] Installing dependencies (10-20 min on first run) ...
 echo.
 "%ROOT%\venv\Scripts\python.exe" "%ROOT%\scripts\bootstrap.py" %MIRROR_ARG%
 set "RC=%ERRORLEVEL%"
 
 echo.
 if "%RC%"=="0" (
-    echo   安装流程结束。请按上面清单放好模型，然后双击 start.bat。
+    echo   Done. Place the model files listed above, then run start.bat.
 ) else (
-    echo   安装未完成，请查看上面的错误信息。
-    echo   修好后可以重复运行本脚本，已完成的步骤会自动跳过。
+    echo   Install did not finish. See the errors above.
+    echo   Fix the cause and re-run this script: finished steps are skipped.
 )
 echo.
 pause
