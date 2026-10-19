@@ -65,7 +65,7 @@ install.bat --mirror
 venv\Scripts\python.exe scripts\check_models.py
 ```
 
-必装 4 项：
+完整清单、目录结构、分片坑和许可说明见 **[docs/models.md](docs/models.md)**。下面是必装的 4 项：
 
 ```bat
 :: 先让下载命令使用项目内的缓存目录
