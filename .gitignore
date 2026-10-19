@@ -20,6 +20,7 @@ WorldGen/
 # ── Models and caches (downloaded by the user, tens of GB) ───────────────────
 models/*
 !models/.gitkeep
+!models/sr/
 models/sr/*
 !models/sr/.gitkeep
 cache/
