@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>世界漫游 · WorldGen Studio</title>
+<link rel="stylesheet" href="/static/world.css?v=1" />
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="fade" id="fade"></div>
+
+<header class="hud top">
+  <div class="title">
+    <span class="dot"></span>
+    <h1 id="sceneName">世界漫游</h1>
+  </div>
+  <p class="hint">拖动环视 · WASD 移动 · 点击底部站点传送</p>
+</header>
+
+<aside class="hud right">
+  <div class="panel">
+    <label class="row">
+      <span>光照</span>
+      <input type="range" id="day" min="0" max="1" step="0.01" value="0.62" />
+    </label>
+    <div class="row btns">
+      <button id="btnCycle" class="on">自动昼夜</button>
+      <button id="btnWind" class="on">风</button>
+    </div>
+    <p class="stat" id="stat">—</p>
+  </div>
+</aside>
+
+<footer class="hud bottom">
+  <div class="sites" id="sites"></div>
+</footer>
+
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/world.js?v=4"></script>
+</body>
+</html>

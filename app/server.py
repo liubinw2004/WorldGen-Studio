@@ -115,6 +115,58 @@ def uploads(name: str):
     return send_from_directory(UPLOAD_DIR, name)
 
 
+@app.get("/world")
+def world_viewer():
+    """Portal-based world viewer: several generated scenes, traversable."""
+    return send_from_directory(STATIC_DIR, "world.html")
+
+
+_SCENE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
+
+
+def _scene_dir(scene_id: str):
+    """Resolve a scene id to its directory, refusing anything outside outputs."""
+    if not _SCENE_ID_RE.match(scene_id) or ".." in scene_id:
+        return None
+    d = STUDIO_OUT / scene_id
+    if d.is_dir() and (d / "splat.ply").exists():
+        return d
+    return None
+
+
+@app.get("/api/world/ply/<scene_id>")
+def api_world_ply(scene_id: str):
+    """Stream a scene's Gaussian cloud. Kept out of /api/asset so the viewer
+    does not have to know absolute paths."""
+    d = _scene_dir(scene_id)
+    if d is None:
+        return jsonify({"ok": False, "error": "unknown scene"}), 404
+    resp = send_file(d / "splat.ply", mimetype="application/octet-stream")
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
+@app.get("/api/world/scenes")
+def api_world_scenes():
+    """Scene list for the world viewer, newest first."""
+    items = []
+    if STUDIO_OUT.exists():
+        for d in sorted(STUDIO_OUT.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            ply = d / "splat.ply"
+            if not ply.exists():
+                continue
+            meta = _read_meta(d)
+            items.append({
+                "id": d.name,
+                "prompt": meta.get("prompt") or _prompt_from_log(d),
+                "prompt_zh": meta.get("prompt_zh") or "",
+                "mode": meta.get("mode", "t2s"),
+                "created": meta.get("created") or datetime.fromtimestamp(ply.stat().st_mtime).strftime("%Y-%m-%dT%H:%M:%S"),
+                "bytes": ply.stat().st_size,
+            })
+    return jsonify({"ok": True, "items": items[:40]})
+
+
 @app.get("/api/asset")
 def api_asset():
     raw = request.args.get("path", "")

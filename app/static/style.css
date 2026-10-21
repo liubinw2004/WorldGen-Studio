@@ -214,6 +214,22 @@ svg { display: block; }
 .ghost-btn svg { width: 16px; height: 16px; }
 .ghost-btn:hover { color: var(--txt); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.04); }
 
+.world-entrance {
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  color: var(--txt);
+  border-color: rgba(94, 234, 212, 0.32);
+  background: rgba(94, 234, 212, 0.07);
+}
+.world-entrance span { font-size: 12px; letter-spacing: 0.02em; }
+.world-entrance:hover {
+  border-color: rgba(94, 234, 212, 0.6);
+  background: rgba(94, 234, 212, 0.13);
+}
+
 /* ─── workspace grid ───────────────────────────────────────────────────── */
 .workspace {
   display: grid;
