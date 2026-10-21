@@ -27,6 +27,7 @@ venv\Scripts\python.exe scripts\check_models.py
 | `black-forest-labs/FLUX.1-Fill-dev`（组件） | 图生场景 | ≈ 0.6 GB | `models/FLUX.1-Fill-dev/` |
 | `4x-UltraSharp.pth` | 超分（锐利） | 67 MB | `models/sr/` |
 | `RealESRGAN_x4plus.pth` | 超分（柔和） | 67 MB | `models/sr/` |
+| `Helsinki-NLP/opus-mt-zh-en` | 中文提示词翻译 | 300 MB | `models/mt/opus-mt-zh-en/` |
 | `shi-labs/oneformer_ade20k_swin_large` | `--inpaint_bg` | 0.9 GB | `cache/hf/hub/` |
 
 ## HF 缓存类模型
@@ -117,6 +118,21 @@ xcopy "models\FLUX.1-dev\vae"            "models\FLUX.1-Fill-dev\vae\" /E /I /Y
 - `RealESRGAN_x4plus.pth` — [下载](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth)
 
 缺了不影响生成，只是界面里的「画质增强」不可用。
+
+## 中文提示词翻译
+
+放在 `models\mt\opus-mt-zh-en\`（约 300MB）：
+
+```bat
+python scripts\fetch_translate_model.py            :: 直连
+python scripts\fetch_translate_model.py --mirror   :: 国内镜像
+```
+
+**为什么需要它**：FLUX.1-dev 的文本编码器是 T5-XXL，只用英文语料训练，没有中文词表。拿一句典型描述实测，9 个 token 里有 4 个是 `<unk>`，模型实际收到的只有标点——中文会被静默忽略，出来的是一张与描述无关的泛化全景。
+
+这个模型在 CPU 上跑，**不占显存**；首次调用加载约 1 秒，之后每句 0.5 秒左右。翻译后会做两层术语修正（音译类名词翻译前替换、已知误译翻译后改写），界面会把实际送进模型的英文显示出来。
+
+缺失时中文输入仍能提交，但等价于没有描述，建议直接用英文。
 
 ## 许可提醒
 

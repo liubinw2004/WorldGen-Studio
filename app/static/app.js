@@ -482,6 +482,15 @@ async function generate() {
       toast(j.error || '无法启动生成', 'error');
       return;
     }
+    // A Chinese prompt is translated server-side; show the English that FLUX
+    // actually receives so the result is explainable.
+    const zhPrompt = j.job && j.job.prompt_zh;
+    if (zhPrompt) {
+      $('#transText').textContent = j.job.prompt;
+      $('#transNote').hidden = false;
+    } else {
+      $('#transNote').hidden = true;
+    }
     S.lastParams = {
       mode: S.mode,
       prompt: promptEl().value,
@@ -558,7 +567,7 @@ function renderHistory() {
     const body = document.createElement('div');
     body.className = 'hist-body';
     body.innerHTML = `
-      <div class="hist-title">${escapeHtml(it.prompt || '(无描述)')}</div>
+      <div class="hist-title">${escapeHtml(it.prompt_zh || it.prompt || '(无描述)')}</div>
       <div class="hist-sub">
         <span class="tag">${it.mode}</span>
         <span>${it.resolution}${it.sr ? ' → ' + (it.sr_result || '2×') : ''}</span>
@@ -582,7 +591,8 @@ function openDetail(idx) {
   if (!it) return;
   const rows = [
     ['模式', it.mode === 'i2s' ? '图像 → 场景' : '文本 → 场景'],
-    ['描述', it.prompt || '—'],
+    ['描述', it.prompt_zh || it.prompt || '—'],
+    ...(it.prompt_zh ? [['实际输入', it.prompt]] : []),
     ['分辨率', it.resolution + (it.sr_result ? ` → ${it.sr_result}` : '')],
     ['画质增强', it.sr ? (SR_LABEL[it.sr] || it.sr) : '关闭'],
     ['高斯点', it.gaussians ? it.gaussians.toLocaleString() : '—'],
@@ -674,6 +684,11 @@ async function openSystem() {
       html += j.sr.map(m =>
         `<div class="sys-row"><span>${escapeHtml(m.label)}</span><b class="${m.ready ? 'sys-ok' : 'sys-bad'}">${m.ready ? '就绪' : '缺失'}</b></div>`
       ).join('');
+    }
+    if (j.translator) {
+      html += '<div style="margin-top:10px;font-size:11px;color:var(--txt-3)">中文输入</div>';
+      html += `<div class="sys-row"><span>${escapeHtml(j.translator.label)}</span>`
+        + `<b class="${j.translator.ready ? 'sys-ok' : 'sys-bad'}">${j.translator.ready ? '就绪' : '缺失'}</b></div>`;
     }
     $('#systemBody').innerHTML = html;
     $('#modalTitle').textContent = '运行环境';

@@ -41,6 +41,7 @@ app/uploads/
 app/logs/
 app/.browser/
 app/.browser-cdp/
+app/.browser-cdp2/
 app/.browser-shot/
 app/screenshots/*.png
 !app/screenshots/README.md

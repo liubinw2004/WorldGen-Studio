@@ -21,6 +21,9 @@
   --amber: #e0a34a;
   --red: #f0736f;
   --grad: linear-gradient(135deg, #5eead4 0%, #38bdf8 52%, #818cf8 100%);
+  /* referenced by .field-hint b but never defined -> the rule silently fell
+     back to the inherited colour. Kept as an alias of --teal. */
+  --accent: var(--teal);
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -369,6 +372,31 @@ textarea::placeholder { color: var(--txt-3); opacity: 0.8; }
   padding: 0 2px;
 }
 #charCount { font-variant-numeric: tabular-nums; }
+
+/* translation preview: the English prompt that actually reaches FLUX */
+.trans-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt-2);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal) 22%, transparent);
+}
+.trans-note[hidden] { display: none; }
+.trans-tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+}
+.trans-text { flex: 1 1 auto; word-break: break-word; }
 
 /* chips */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -96,10 +96,12 @@ class Job:
     """
 
     def __init__(self, mode: str, prompt: str, image: str | None,
-                 resolution: int, out_dir: Path, sr: str = ""):
+                 resolution: int, out_dir: Path, sr: str = "",
+                 prompt_zh: str = ""):
         self.id = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.mode = mode
-        self.prompt = prompt
+        self.prompt = prompt              # English, what actually reaches FLUX
+        self.prompt_zh = prompt_zh        # original Chinese, empty if none
         self.image = image
         self.resolution = resolution
         self.sr = (sr or "").lower()
@@ -175,6 +177,7 @@ class Job:
             "id": self.id,
             "mode": self.mode,
             "prompt": self.prompt,
+            "prompt_zh": self.prompt_zh,
             "image": self.image,
             "resolution": self.resolution,
             "sr": self.sr,
@@ -315,7 +318,7 @@ class Runner:
                     pass
 
     def start(self, mode: str, prompt: str, image: str | None,
-              resolution: int, sr: str = "") -> Job:
+              resolution: int, sr: str = "", prompt_zh: str = "") -> Job:
         with self.lock:
             if self.job and self.job.status == "running":
                 raise RuntimeError("已有任务在运行，请先停止或等待完成")
@@ -326,7 +329,8 @@ class Runner:
             out_dir = STUDIO_OUT / f"{stamp}-{mode}-{_slug(prompt)}{suffix}"
             out_dir.mkdir(parents=True, exist_ok=True)
 
-            job = Job(mode, prompt, image, resolution, out_dir, sr=sr)
+            job = Job(mode, prompt, image, resolution, out_dir, sr=sr,
+                      prompt_zh=prompt_zh)
             self.job = job
 
         t = threading.Thread(target=self._run, args=(job,), daemon=True)
@@ -455,6 +459,7 @@ class Runner:
             "id": job.id,
             "mode": job.mode,
             "prompt": job.prompt,
+            "prompt_zh": job.prompt_zh,
             "image": job.image,
             "resolution": job.resolution,
             "sr": job.sr,

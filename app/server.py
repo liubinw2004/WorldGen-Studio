@@ -28,6 +28,7 @@ import config as cfg  # noqa: E402
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory  # noqa: E402
 
 import runner  # noqa: E402
+import translate as translator  # noqa: E402
 
 APP_DIR = ROOT / "app"
 STATIC_DIR = APP_DIR / "static"
@@ -169,6 +170,13 @@ def api_system():
         "offline": True,
         "models": packs,
         "sr": sr,
+        # Chinese prompts are machine-translated before they reach FLUX; the UI
+        # shows this in the system panel so a missing model is diagnosable.
+        "translator": {
+            "ready": translator.model_ready(),
+            "label": "中译英 (opus-mt-zh-en)",
+            "path": str(translator.MODEL_DIR),
+        },
         "outputs": str(STUDIO_OUT),
     })
 
@@ -216,6 +224,24 @@ def api_generate():
         if resolution not in (1024, 1280, 1600):
             resolution = 1600
 
+    # Chinese has no representation in FLUX's English-only T5 encoder (a typical
+    # sentence tokenises to a handful of <unk>), so translate before the job is
+    # built and report the English that was actually used back to the UI.
+    prompt_zh = ""
+    if translator.has_chinese(prompt):
+        prompt_zh = prompt
+        prompt, translated = translator.translate_prompt(prompt)
+        if not translated:
+            # Refuse rather than silently generate something unrelated.
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "中文提示词需要翻译模型，但当前不可用。"
+                    "请运行 python scripts/fetch_translate_model.py 下载（约 300MB），"
+                    "或直接改用英文描述。"
+                ),
+            }), 400
+
     if not runner.RUNNER.busy():
         # A finished run keeps its viewer alive (~6.6 GB). Release it first,
         # then let the telemetry thread take a fresh sample.
@@ -240,7 +266,8 @@ def api_generate():
             }), 409
 
     try:
-        job = runner.RUNNER.start(mode, prompt, image, resolution, sr=sr)
+        job = runner.RUNNER.start(mode, prompt, image, resolution, sr=sr,
+                                  prompt_zh=prompt_zh)
     except RuntimeError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
@@ -359,6 +386,9 @@ def api_history():
                 "dir": str(d),
                 "mode": meta.get("mode", "t2s"),
                 "prompt": prompt,
+                # Kept separate from `prompt` (the English that ran) so the
+                # library can show what the user actually typed.
+                "prompt_zh": meta.get("prompt_zh") or "",
                 "resolution": meta.get("resolution", 1024),
                 "sr": meta.get("sr", ""),
                 "sr_result": meta.get("sr_result", ""),

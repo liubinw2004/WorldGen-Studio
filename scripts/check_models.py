@@ -141,6 +141,24 @@ def collect() -> list[dict]:
             "hint": f"放到 {p}（约 67MB）\n        缺失只影响「画质增强」，不影响正常生成",
         })
 
+    # --- optional Chinese -> English translator ------------------------------
+    # Without it a Chinese prompt reaches FLUX as a handful of <unk> tokens and
+    # the panorama silently ignores the description, so the failure is invisible
+    # unless the checklist calls it out.
+    mt_dir = cfg.ROOT / "models" / "mt" / "opus-mt-zh-en"
+    mt_ok = (mt_dir / "config.json").exists() and (
+        any(mt_dir.glob("*.safetensors")) or any(mt_dir.glob("pytorch_model*.bin")))
+    items.append({
+        "key": "translate",
+        "label": "中文提示词翻译（opus-mt-zh-en）[可选]",
+        "required": False,
+        "ok": mt_ok,
+        "path": str(mt_dir),
+        "size_gb": _dirsize_gb(mt_dir) if mt_dir.exists() else 0,
+        "hint": "缺失时仍可用英文提示词；中文会被模型忽略\n"
+                "        下载：python scripts/fetch_translate_model.py（约 300MB）",
+    })
+
     return items
 
 
