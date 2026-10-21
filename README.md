@@ -33,7 +33,7 @@ WorldGen 本身是一个研究项目：命令行入口、50 步扩散、约 12GB
 | 驱动 | 支持 CUDA 12.8 的驱动（≥ 570） |
 | Python | **3.11 或 3.12**（3.13 不可用，torch cu128 与 nunchaku 只提供 cp312 轮子） |
 | 磁盘 | 约 60GB（依赖 ~8GB + 模型 ~40GB + 输出） |
-| Git | 需要（用于拉取 WorldGen 源码） |
+| Git | 可选。没有也能装，安装器会改用 ZIP 下载源码 |
 
 显存越小越需要 `low_vram` 路径；16GB 以上可以尝试 1600 原生分辨率，但本项目默认按 12GB 调优。
 
@@ -46,6 +46,8 @@ git clone https://github.com/liubinw2004/WorldGen-Studio.git
 cd WorldGen-Studio
 install.bat
 ```
+
+没有装 git 也没关系：在仓库页面点 **Code → Download ZIP**，解压后进入目录直接运行 `install.bat`。安装器在找不到 git 时会自动改用 ZIP 下载 WorldGen 源码，效果相同。
 
 国内网络建议：
 

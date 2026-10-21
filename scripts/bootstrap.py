@@ -153,7 +153,12 @@ def step_nunchaku() -> None:
 
 
 def step_worldgen_repo() -> None:
-    """Clone ZiYang-xie/WorldGen plus the two submodules the pipeline needs.
+    """Fetch ZiYang-xie/WorldGen plus the two submodules the pipeline needs.
+
+    Git is preferred when present: it produces a real checkout that can be
+    updated later. When git is missing the exact same trees are downloaded as
+    ZIPs instead, so a machine that only has Python can still install -- see
+    ``scripts/fetch_source.py``.
 
     submodules/pytorch3d is replaced by vendor/pytorch3d_shim and
     submodules/ml-sharp is only used by --use_sharp, so both are skipped.
@@ -162,15 +167,20 @@ def step_worldgen_repo() -> None:
         log(f"WorldGen 源码已存在: {cfg.REPO_DIR}")
         return
 
-    if not which_or_none("git"):
-        die("未找到 git。", "请先安装 Git for Windows: https://git-scm.com/download/win")
+    if which_or_none("git"):
+        log(f"clone WorldGen -> {cfg.REPO_DIR}")
+        git("clone", "--depth", "1", cfg.proxied(cfg.WORLDGEN_REPO), str(cfg.REPO_DIR))
 
-    log(f"clone WorldGen -> {cfg.REPO_DIR}")
-    git("clone", "--depth", "1", cfg.proxied(cfg.WORLDGEN_REPO), str(cfg.REPO_DIR))
+        log("初始化子模块 viser / DA-2 ...")
+        git("submodule", "update", "--init", "--depth", "1",
+            "submodules/viser", "submodules/DA-2", cwd=cfg.REPO_DIR)
+    else:
+        warn("未找到 git，改用 ZIP 下载源码（安装结果相同，只是没有 .git 目录）")
+        from fetch_source import fetch_repo
 
-    log("初始化子模块 viser / DA-2 ...")
-    git("submodule", "update", "--init", "--depth", "1",
-        "submodules/viser", "submodules/DA-2", cwd=cfg.REPO_DIR)
+        fetch_repo("ZiYang-xie/WorldGen", cfg.REPO_DIR)
+        fetch_repo("ZiYang-xie/viser", cfg.REPO_DIR / "submodules" / "viser")
+        fetch_repo("EnVision-Research/DA-2", cfg.REPO_DIR / "submodules" / "DA-2")
 
     if not (cfg.REPO_DIR / "src" / "worldgen" / "worldgen.py").exists():
         die("WorldGen 源码不完整。", f"删除 {cfg.REPO_DIR} 后重试。")
@@ -216,17 +226,30 @@ def step_da2() -> None:
         log("da2 已安装")
         return
 
-    utils3d = "git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900"
+    utils3d_commit = "3913c65d81e05e47b9f367250cf8c0f7462a0900"
     log("安装 utils3d (--no-deps) ...")
-    pip("install", "--no-deps", cfg.proxied(utils3d))
+    if which_or_none("git"):
+        pip("install", "--no-deps",
+            cfg.proxied(f"git+https://github.com/EasternJournalist/utils3d.git@{utils3d_commit}"))
+    else:
+        # pip's git+... syntax needs git; a local source tree does not.
+        from fetch_source import fetch_commit
+        utils3d_src = cfg.ROOT / "cache" / "src" / "utils3d"
+        fetch_commit("EasternJournalist/utils3d", utils3d_commit, utils3d_src)
+        pip("install", "--no-deps", str(utils3d_src))
 
     da2_dir = cfg.REPO_DIR / "submodules" / "DA-2" / "src"
     if da2_dir.exists():
         log("安装 da2 本地子模块 (--no-deps) ...")
         pip("install", "--no-deps", str(da2_dir))
-    else:
+    elif which_or_none("git"):
         log("未找到 DA-2 子模块，改为从 GitHub 安装 ...")
         pip("install", "--no-deps", cfg.proxied(cfg.DA2_REPO_SUBDIR))
+    else:
+        from fetch_source import fetch_repo
+        da2_root = cfg.ROOT / "cache" / "src" / "DA-2"
+        fetch_repo("EnVision-Research/DA-2", da2_root)
+        pip("install", "--no-deps", str(da2_root / "src"))
 
     if not has_module("da2", "model"):
         die("da2 安装后无法 import。")
