@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>世界漫游 · WorldGen Studio</title>
-<link rel="stylesheet" href="/static/world.css?v=1" />
+<link rel="stylesheet" href="/static/world.css?v=3" />
 </head>
 <body>
 <canvas id="stage"></canvas>
@@ -33,11 +33,88 @@
   </div>
 </aside>
 
+<aside class="hud left">
+  <div class="panel vpanel">
+    <div class="vtitle"><span class="vdot"></span>全景视频</div>
+
+    <label class="row">
+      <span>运镜</span>
+      <select id="vPath">
+        <option value="still" selected>静止</option>
+        <option value="orbit">环绕</option>
+        <option value="handheld">手持</option>
+        <option value="dolly">推近</option>
+        <option value="crane">升起</option>
+      </select>
+    </label>
+    <p class="vhint" id="vHint">机位不动，昼夜渐变 + 风</p>
+
+    <label class="row">
+      <span>时长</span>
+      <select id="vSec">
+        <option value="4">4 秒</option>
+        <option value="6" selected>6 秒</option>
+        <option value="8">8 秒</option>
+        <option value="12">12 秒</option>
+      </select>
+    </label>
+
+    <label class="row">
+      <span>分辨率</span>
+      <select id="vSize">
+        <option value="1024" selected>1024×512 快速</option>
+        <option value="2048">2048×1024 高清</option>
+      </select>
+    </label>
+
+    <label class="row">
+      <span>帧率</span>
+      <select id="vFps">
+        <option value="24" selected>24 fps</option>
+      </select>
+    </label>
+
+    <div class="row">
+      <span>昼夜过渡</span>
+      <button id="vDay" class="tog on" type="button">开</button>
+    </div>
+
+    <button id="vGo" class="primary" type="button">生成全景视频</button>
+
+    <div class="vprog" id="vProg" hidden>
+      <div class="vbar"><i id="vBar"></i></div>
+      <div class="vmeta">
+        <span id="vTxt">准备中…</span>
+        <button id="vCancel" type="button">取消</button>
+      </div>
+    </div>
+
+    <p class="verr" id="vErr"></p>
+  </div>
+
+  <div class="panel vlistpanel">
+    <div class="vtitle2">已生成的视频</div>
+    <div class="vlist" id="vList"><p class="vempty">还没有生成的视频</p></div>
+  </div>
+</aside>
+
+<div class="vplayer" id="vPlayer" hidden>
+  <span class="vnow" id="vNow">全景视频</span>
+  <div class="vactions">
+    <a id="vDownload" class="vbtn" href="#" download>下载 MP4</a>
+    <button id="vBack" class="vbtn" type="button">返回点云漫游</button>
+  </div>
+</div>
+
+<div class="vsrc" aria-hidden="true">
+  <video id="panoVideo" muted playsinline loop preload="auto"></video>
+</div>
+
 <footer class="hud bottom">
   <div class="sites" id="sites"></div>
 </footer>
 
 <script src="/static/vendor/three.min.js"></script>
-<script src="/static/world.js?v=4"></script>
+<script src="/static/world.js?v=7"></script>
 </body>
 </html>

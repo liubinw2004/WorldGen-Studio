@@ -30,6 +30,8 @@
   var raycaster = new THREE.Raycaster();
   var pointer = new THREE.Vector2();
   var downX = 0, downY = 0;
+  /* 'cloud' = walk the Gaussian splat, 'video' = play a rendered 360 mp4 */
+  var mode = 'cloud';
 
   var SH_C0 = 0.28209479177387814;
   var WALK_RADIUS = 0.55;
@@ -283,6 +285,7 @@
   }
 
   function tryPortal(e) {
+    if (mode !== 'cloud') return;
     if (!portal || scenes.length < 2) return;
     var rect = canvas.getBoundingClientRect();
     pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -315,7 +318,12 @@
       m.textContent = (i === current ? '所在 · ' : '') + (s.mode === 'i2s' ? '图像' : '文本');
       b.appendChild(n);
       b.appendChild(m);
-      b.onclick = function () { if (i !== current) teleport(i); };
+      b.onclick = function () {
+        if (mode === 'video') {
+          if (i === current) { exitVideo(); return; }
+        }
+        if (i !== current) teleport(i);
+      };
       elSites.appendChild(b);
     });
   }
@@ -331,6 +339,7 @@
 
   function teleport(i) {
     if (i < 0 || i >= scenes.length) return;
+    if (mode === 'video') exitVideo();
     var token = ++loadToken;
     fade.classList.add('show');
     elStat.textContent = '正在传送…';
@@ -424,20 +433,22 @@
     }
 
     var speed = 0.9 * dt;
-    if (keys['w'] || keys['arrowup']) camera.position.z -= speed * Math.cos(yaw);
-    if (keys['w'] || keys['arrowup']) camera.position.x -= speed * Math.sin(yaw);
-    if (keys['s'] || keys['arrowdown']) camera.position.z += speed * Math.cos(yaw);
-    if (keys['s'] || keys['arrowdown']) camera.position.x += speed * Math.sin(yaw);
-    if (keys['a'] || keys['arrowleft']) camera.position.x -= speed * Math.cos(yaw);
-    if (keys['a'] || keys['arrowleft']) camera.position.z += speed * Math.sin(yaw);
-    if (keys['d'] || keys['arrowright']) camera.position.x += speed * Math.cos(yaw);
-    if (keys['d'] || keys['arrowright']) camera.position.z -= speed * Math.sin(yaw);
+    if (mode === 'cloud') {
+      if (keys['w'] || keys['arrowup']) camera.position.z -= speed * Math.cos(yaw);
+      if (keys['w'] || keys['arrowup']) camera.position.x -= speed * Math.sin(yaw);
+      if (keys['s'] || keys['arrowdown']) camera.position.z += speed * Math.cos(yaw);
+      if (keys['s'] || keys['arrowdown']) camera.position.x += speed * Math.sin(yaw);
+      if (keys['a'] || keys['arrowleft']) camera.position.x -= speed * Math.cos(yaw);
+      if (keys['a'] || keys['arrowleft']) camera.position.z += speed * Math.sin(yaw);
+      if (keys['d'] || keys['arrowright']) camera.position.x += speed * Math.cos(yaw);
+      if (keys['d'] || keys['arrowright']) camera.position.z -= speed * Math.sin(yaw);
 
-    // keep the viewer inside the shell that actually has geometry
-    var r = Math.hypot(camera.position.x, camera.position.z);
-    if (r > WALK_RADIUS) {
-      camera.position.x *= WALK_RADIUS / r;
-      camera.position.z *= WALK_RADIUS / r;
+      // keep the viewer inside the shell that actually has geometry
+      var r = Math.hypot(camera.position.x, camera.position.z);
+      if (r > WALK_RADIUS) {
+        camera.position.x *= WALK_RADIUS / r;
+        camera.position.z *= WALK_RADIUS / r;
+      }
     }
 
     camera.lookAt(
@@ -446,7 +457,7 @@
       camera.position.z - Math.cos(yaw) * Math.cos(pitch)
     );
 
-    if (portal) {
+    if (portal && mode === 'cloud') {
       var pulse = 0.5 + 0.5 * Math.sin(elapsed * 2.1);
       portal.scale.setScalar(1 + 0.028 * pulse);
       portal.material.opacity = 0.58 + 0.32 * pulse;
@@ -475,16 +486,319 @@
     if (elapsed - fpsAt > 0.5) {
       fps = Math.round(frames / (elapsed - fpsAt));
       frames = 0; fpsAt = elapsed;
-      if (current >= 0 && points) {
+      if (current >= 0 && points && mode === 'cloud') {
         elStat.textContent = points.geometry.attributes.position.count.toLocaleString() + ' 点 · ' + fps + ' fps';
       }
     }
   }
 
+  /* ----------------------------------------------------------- pano video */
+
+  var elVPath = document.getElementById('vPath');
+  var elVHint = document.getElementById('vHint');
+  var elVSec = document.getElementById('vSec');
+  var elVSize = document.getElementById('vSize');
+  var elVFps = document.getElementById('vFps');
+  var elVDay = document.getElementById('vDay');
+  var elVGo = document.getElementById('vGo');
+  var elVProg = document.getElementById('vProg');
+  var elVBar = document.getElementById('vBar');
+  var elVTxt = document.getElementById('vTxt');
+  var elVCancel = document.getElementById('vCancel');
+  var elVErr = document.getElementById('vErr');
+  var elVList = document.getElementById('vList');
+  var elVPlayer = document.getElementById('vPlayer');
+  var elVNow = document.getElementById('vNow');
+  var elVDownload = document.getElementById('vDownload');
+  var elVBack = document.getElementById('vBack');
+  var videoEl = document.getElementById('panoVideo');
+
+  var PATH_HINTS = {
+    // `still` depends on the 昼夜过渡 switch, so vHintFor() fills it in.
+    still: '',
+    orbit: '偏航转一圈，首尾帧相接，可无缝循环',
+    handheld: '轻微低频抖动，加一点呼吸感',
+    dolly: '沿 +z 推进 0.4 m 再回落，产生视差（较慢，上限 0.8 m）',
+    crane: '垂直起降 0.4 m 再回落（较慢，上限 0.8 m）'
+  };
+  var PATH_SLOW = { dolly: true, crane: true };
+
+  var videoJob = null;
+  var videoTimer = null;
+  /* Read the initial state off the markup: the product default is 开, so a
+     first-time user gets a clip that actually moves instead of a near-still. */
+  var videoDayOn = elVDay.classList.contains('on');
+  var videoUrl = '';
+  var panoMesh = null;
+  var videoTex = null;
+
+  function vErr(msg) {
+    elVErr.textContent = msg || '';
+  }
+
+  function vShowProgress(on, done, total) {
+    elVProg.hidden = !on;
+    if (!on) return;
+    var pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+    elVBar.style.width = pct.toFixed(1) + '%';
+    elVTxt.textContent = total > 0
+      ? '已渲染 ' + done + ' / ' + total + ' 帧 · ' + pct.toFixed(0) + '%'
+      : '正在加载点云…';
+  }
+
+  function vStopPoll() {
+    if (videoTimer) { clearInterval(videoTimer); videoTimer = null; }
+  }
+
+  /* A 360 player is an inside-out sphere with the clip as its texture. The
+     mesh is mirrored on x so the texture reads correctly from the inside, then
+     rotated -90 deg about y so u=0.5 (the pano centre, i.e. the splat's +z)
+     lands on -z, which is where the point-cloud camera starts looking. */
+  function ensurePanoMesh() {
+    if (panoMesh) return;
+    var geo = new THREE.SphereGeometry(60, 64, 32);
+    geo.scale(-1, 1, 1);
+    videoTex = new THREE.VideoTexture(videoEl);
+    videoTex.colorSpace = THREE.SRGBColorSpace;
+    videoTex.minFilter = THREE.LinearFilter;
+    videoTex.magFilter = THREE.LinearFilter;
+    videoTex.generateMipmaps = false;
+    panoMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      map: videoTex,
+      depthTest: false,
+      depthWrite: false
+    }));
+    panoMesh.rotation.y = -Math.PI / 2;
+    panoMesh.frustumCulled = false;
+    panoMesh.visible = false;
+    scene.add(panoMesh);
+  }
+
+  function enterVideo(url, label) {
+    if (!url) return;
+    ensureWorld();
+    ensurePanoMesh();
+    videoUrl = url;
+
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.loop = true;
+    if (videoEl.src.indexOf(url) < 0) videoEl.src = url;
+    var p = videoEl.play();
+    if (p && p.catch) p.catch(function () { /* user gesture / codec */ });
+
+    panoMesh.visible = true;
+    if (points) points.visible = false;
+    if (portal) portal.visible = false;
+    if (portalLabel) portalLabel.visible = false;
+    mode = 'video';
+
+    yaw = 0; pitch = 0;
+    camera.position.set(0, 0, 0);
+    camera.fov = 78;
+    camera.updateProjectionMatrix();
+    renderer.setClearColor(0x000000, 1);
+
+    elVPlayer.hidden = false;
+    elVNow.textContent = label || '全景视频';
+    elVDownload.href = url;
+    elVDownload.setAttribute('download', url.split('/').pop() || 'pano.mp4');
+    elName.textContent = '全景视频 · 360°';
+    elStat.textContent = '拖动环视 · 循环播放';
+    markVideoItems();
+  }
+
+  function exitVideo() {
+    if (mode !== 'video') return;
+    mode = 'cloud';
+    if (panoMesh) panoMesh.visible = false;
+    try { videoEl.pause(); } catch (e) { /* ignore */ }
+    if (points) points.visible = true;
+    if (portal) portal.visible = true;
+    if (portalLabel) portalLabel.visible = true;
+
+    yaw = 0; pitch = 0;
+    camera.position.set(0, 0, 0);
+    camera.fov = 62;
+    camera.updateProjectionMatrix();
+    renderer.setClearColor(0x070a0d, 1);
+
+    elVPlayer.hidden = true;
+    markVideoItems();
+    if (current >= 0 && scenes[current]) {
+      elName.textContent = sceneLabel(scenes[current], current);
+      elStat.textContent = points
+        ? points.geometry.attributes.position.count.toLocaleString() + ' 个高斯点'
+        : '—';
+    } else {
+      elName.textContent = '世界漫游';
+      elStat.textContent = '—';
+    }
+  }
+
+  function markVideoItems() {
+    var kids = elVList.querySelectorAll('.vitem');
+    for (var i = 0; i < kids.length; i++) {
+      kids[i].classList.toggle('on', !!videoUrl && kids[i].getAttribute('data-url') === videoUrl
+        && mode === 'video');
+    }
+  }
+
+  function renderVideoList(items) {
+    elVList.innerHTML = '';
+    if (!items || !items.length) {
+      var p = document.createElement('p');
+      p.className = 'vempty';
+      p.textContent = '还没有生成的视频';
+      elVList.appendChild(p);
+      return;
+    }
+    items.forEach(function (it) {
+      var label = (it.path_label || it.path || '视频') +
+        ' · ' + (it.seconds || 0) + 's · ' +
+        (it.width || 0) + '×' + (it.height || 0);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'vitem';
+      b.setAttribute('data-url', it.url);
+      var n = document.createElement('span');
+      n.className = 'vn';
+      n.textContent = label;
+      var m = document.createElement('span');
+      m.className = 'vm';
+      m.textContent = (it.size || '') + ' · ' + String(it.created || '').replace('T', ' ');
+      b.appendChild(n);
+      b.appendChild(m);
+      b.onclick = function () { enterVideo(it.url, label); };
+      elVList.appendChild(b);
+    });
+    markVideoItems();
+  }
+
+  function loadVideos() {
+    fetch('/api/world/videos')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) renderVideoList(d.items || []); })
+      .catch(function () { /* the panel simply stays empty */ });
+  }
+
+  function vPoll() {
+    if (!videoJob) return;
+    fetch('/api/world/video/' + encodeURIComponent(videoJob))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error((d && d.error) || '任务状态丢失');
+        vShowProgress(true, d.frames_done || 0, d.frames_total || 0);
+        if (d.state === 'done') {
+          vStopPoll();
+          vShowProgress(false);
+          elVGo.disabled = false;
+          loadVideos();
+          enterVideo(d.url, vLabel());
+        } else if (d.state === 'error') {
+          vStopPoll();
+          vShowProgress(false);
+          elVGo.disabled = false;
+          vErr(d.error || '渲染失败');
+        } else if (d.state === 'cancelled') {
+          vStopPoll();
+          vShowProgress(false);
+          elVGo.disabled = false;
+          vErr('已取消渲染');
+        }
+      })
+      .catch(function (err) {
+        vStopPoll();
+        vShowProgress(false);
+        elVGo.disabled = false;
+        vErr(err.message);
+      });
+  }
+
+  function vStart() {
+    vErr('');
+    if (!scenes.length || current < 0) {
+      vErr('还没有可用的场景，先生成一个。');
+      return;
+    }
+    var size = parseInt(elVSize.value, 10) || 1024;
+    var body = {
+      scene: scenes[current].id,
+      path: elVPath.value,
+      seconds: parseFloat(elVSec.value) || 6,
+      fps: parseInt(elVFps.value, 10) || 24,
+      width: size,
+      height: size / 2,
+      wind: windOn ? 0.6 : 0
+    };
+    // Off: hold whatever the day/night slider shows. On: dusk -> midnight.
+    body.light_from = videoDayOn ? 0.9 : light;
+    body.light_to = videoDayOn ? 0.2 : light;
+
+    elVGo.disabled = true;
+    vShowProgress(true, 0, 0);
+    fetch('/api/world/video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (r) {
+        return r.json().then(function (d) { return { status: r.status, d: d }; });
+      })
+      .then(function (res) {
+        if (!res.d || !res.d.ok) throw new Error((res.d && res.d.error) || '启动失败');
+        videoJob = res.d.job;
+        vShowProgress(true, 0, res.d.frames_total || 0);
+        vStopPoll();
+        videoTimer = setInterval(vPoll, 600);
+      })
+      .catch(function (err) {
+        vShowProgress(false);
+        elVGo.disabled = false;
+        vErr(err.message);
+      });
+  }
+
+  function vCancelJob() {
+    if (!videoJob) return;
+    fetch('/api/world/video/' + encodeURIComponent(videoJob) + '/cancel', { method: 'POST' })
+      .catch(function () { /* the poll reports the final state */ });
+  }
+
+  function vHintFor(p) {
+    if (p === 'still') {
+      return videoDayOn ? '机位不动，昼夜渐变 + 风' : '机位不动，只有风';
+    }
+    return PATH_HINTS[p] || '';
+  }
+
+  function vSyncHint() {
+    var p = elVPath.value;
+    elVHint.textContent = vHintFor(p);
+    elVHint.classList.toggle('slow', !!PATH_SLOW[p]);
+  }
+
+  function vLabel() {
+    var opt = elVPath.options[elVPath.selectedIndex];
+    return (opt ? opt.text : '全景') + ' · ' + elVSec.value + 's';
+  }
+
+  elVPath.addEventListener('change', vSyncHint);
+  elVGo.addEventListener('click', vStart);
+  elVCancel.addEventListener('click', vCancelJob);
+  elVBack.addEventListener('click', exitVideo);
+  elVDay.addEventListener('click', function () {
+    videoDayOn = !videoDayOn;
+    elVDay.classList.toggle('on', videoDayOn);
+    elVDay.textContent = videoDayOn ? '开' : '关';
+    vSyncHint();
+  });
+
   /* ---------------------------------------------------------------- boot */
 
   function boot() {
     ensureWorld();
+    vSyncHint();
     // Allow deep links like /world?light=0.9 for stills and for sharing a mood.
     var q = new URLSearchParams(location.search);
     if (q.has('light')) {
@@ -497,6 +811,7 @@
       }
     }
     step();
+    loadVideos();
     fetch('/api/world/scenes')
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -518,6 +833,36 @@
       .catch(function (err) {
         elStat.textContent = '读取场景失败：' + err.message;
       });
+
+    // Deep link: /world?play=1 (newest clip) or /world?play=<file name>.
+    // Waiting for `current >= 0` avoids racing the point-cloud load, which
+    // would otherwise overwrite the player state.
+    if (q.has('play')) {
+      var want = q.get('play') || '1';
+      var tries = 0;
+      (function tryPlay() {
+        tries++;
+        fetch('/api/world/videos')
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var items = (d && d.items) || [];
+            var pick = null;
+            for (var k = 0; k < items.length; k++) {
+              if (want === '1' || items[k].name === want || items[k].url === want) {
+                pick = items[k];
+                break;
+              }
+            }
+            if (pick && current >= 0) {
+              enterVideo(pick.url, (pick.path_label || '全景视频') +
+                ' · ' + (pick.seconds || 0) + 's');
+            } else if (tries < 25) {
+              setTimeout(tryPlay, 300);
+            }
+          })
+          .catch(function () { /* no clips yet */ });
+      })();
+    }
   }
 
   boot();

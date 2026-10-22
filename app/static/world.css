@@ -181,9 +181,251 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .fade.show { opacity: 1; }
 
+/* ---------------------------------------------------------- 全景视频面板 */
+
+.left {
+  top: 84px;
+  left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100% - 190px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.vpanel { min-width: 232px; }
+.vtitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 11px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.vdot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--warm);
+  box-shadow: 0 0 0 3px rgba(239, 159, 39, 0.16);
+}
+.vtitle2 {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+select {
+  min-width: 112px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+select:hover { border-color: rgba(255, 255, 255, 0.28); }
+select option { background: #12171c; color: var(--text); }
+
+.vhint {
+  margin: 7px 0 0;
+  padding: 0 0 0 1px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.vhint.slow { color: #e6b062; }
+
+.tog {
+  min-width: 60px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tog:hover { border-color: rgba(255, 255, 255, 0.28); color: var(--text); }
+.tog.on {
+  background: rgba(239, 159, 39, 0.16);
+  border-color: rgba(239, 159, 39, 0.55);
+  color: #f2c078;
+}
+
+.primary {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 0;
+  border: 1px solid rgba(29, 158, 117, 0.55);
+  border-radius: 8px;
+  background: rgba(29, 158, 117, 0.18);
+  color: #7fe0bb;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.primary:hover:not(:disabled) { background: rgba(29, 158, 117, 0.3); }
+.primary:disabled { opacity: 0.45; cursor: default; }
+
+.vprog { margin-top: 11px; }
+.vbar {
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.vbar > i {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1d9e75, #5eead4);
+  transition: width 0.25s linear;
+}
+.vmeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.vmeta button {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.vmeta button:hover { border-color: rgba(255, 120, 120, 0.5); color: #f7a3a3; }
+
+.verr {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #f7a3a3;
+  word-break: break-word;
+}
+.verr:empty { display: none; }
+
+.vlistpanel { min-width: 232px; }
+.vlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 176px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.vempty {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.vitem {
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.vitem:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.vitem.on {
+  border-color: rgba(94, 234, 212, 0.5);
+  background: rgba(94, 234, 212, 0.12);
+  color: var(--text);
+}
+.vitem .vn {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vitem .vm {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* video element is only a texture source, kept rendered but invisible */
+.vsrc {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.vplayer {
+  position: absolute;
+  z-index: 30;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 12px 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+}
+/* an author `display` rule beats the UA [hidden] rule - restate it here */
+.vplayer[hidden], .vprog[hidden] { display: none !important; }
+.vnow {
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.vactions { display: flex; gap: 8px; }
+.vbtn {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.vbtn:hover {
+  border-color: rgba(94, 234, 212, 0.5);
+  color: #7fe0bb;
+}
+
 @media (max-width: 720px) {
   .right { top: auto; bottom: 112px; right: 14px; }
   .panel { min-width: 172px; padding: 11px 13px; }
   .hint { display: none; }
   .site { width: 112px; }
+  .left { top: 66px; left: 14px; max-height: calc(100% - 250px); }
+  .vpanel, .vlistpanel { min-width: 196px; }
+  .vplayer { top: auto; bottom: 102px; }
 }

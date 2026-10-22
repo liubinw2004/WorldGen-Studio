@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -31,9 +32,15 @@ import runner  # noqa: E402
 import translate as translator  # noqa: E402
 
 APP_DIR = ROOT / "app"
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+import pano_video  # noqa: E402  (lazy-imports PyAV internally)
+
 STATIC_DIR = APP_DIR / "static"
 UPLOAD_DIR = APP_DIR / "uploads"
 STUDIO_OUT = ROOT / "outputs" / "studio"
+VIDEO_OUT = ROOT / "outputs" / "videos"
 
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 ASSET_ROOTS = [UPLOAD_DIR.resolve(), (ROOT / "cache" / "hf").resolve()]
@@ -165,6 +172,368 @@ def api_world_scenes():
                 "bytes": ply.stat().st_size,
             })
     return jsonify({"ok": True, "items": items[:40]})
+
+
+# --------------------------------------------------------------------------
+# panorama video (app/pano_video.py)
+# --------------------------------------------------------------------------
+_VIDEO_WIDTHS = (1024, 2048)
+_VIDEO_JOB_TTL = 600.0          # keep a finished job's state for 10 minutes
+_VIDEO_JOBS: dict[str, dict] = {}
+_VIDEO_LOCK = threading.Lock()
+_VIDEO_PATH_LABELS = {k: str(v["label"]) for k, v in pano_video.PATHS.items()}
+
+
+def _clamp01(value, default: float = 0.62) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _video_opts(data: dict):
+    """Validate a /api/world/video body. Returns ``(opts, error)``."""
+    scene_id = str(data.get("scene") or "").strip()
+    if not scene_id:
+        return None, "缺少 scene 参数"
+    if _scene_dir(scene_id) is None:
+        return None, f"场景 {scene_id} 不存在或没有 splat.ply"
+
+    path_name = str(data.get("path") or "still").strip().lower()
+    if path_name not in pano_video.PATHS:
+        return None, ("未知运镜 {}，可用：{}".format(
+            path_name, "、".join(sorted(pano_video.PATHS))))
+
+    try:
+        seconds = float(data.get("seconds", 6))
+    except (TypeError, ValueError):
+        return None, "seconds 必须是数字"
+    try:
+        fps = int(float(data.get("fps", 24)))
+    except (TypeError, ValueError):
+        return None, "fps 必须是数字"
+    try:
+        width = int(float(data.get("width", 1024)))
+    except (TypeError, ValueError):
+        return None, "width 必须是数字"
+
+    if not 1.0 <= seconds <= 20.0:
+        return None, "时长必须在 1~20 秒之间"
+    if not 12 <= fps <= 30:
+        return None, "帧率必须在 12~30 之间"
+    if width not in _VIDEO_WIDTHS:
+        return None, "宽度只支持 1024 或 2048"
+
+    raw_height = data.get("height", None)
+    height = width // 2
+    if raw_height not in (None, ""):
+        try:
+            height = int(float(raw_height))
+        except (TypeError, ValueError):
+            return None, "height 必须是数字"
+    if height * 2 != width:
+        return None, f"全景视频必须是 2:1，宽度 {width} 时高度应为 {width // 2}"
+
+    # Product default: a "video" that never changes is a bad first impression, so
+    # an unqualified request ramps dusk -> night exactly like the UI does.
+    # Supplying either bound pins the light (omit light_to to hold light_from).
+    if data.get("light_from") is None and data.get("light_to") is None:
+        light_from, light_to = 0.9, 0.2
+    else:
+        light_from = _clamp01(data.get("light_from", 0.62))
+        light_to = _clamp01(data.get("light_to", light_from))
+
+    raw_wind = data.get("wind", 0.6)
+    if raw_wind is None or (isinstance(raw_wind, str) and not raw_wind.strip()):
+        wind = 0.6                      # omitted -> gentle breeze
+    elif raw_wind is True:
+        wind = 0.6
+    elif raw_wind is False:
+        wind = 0.0
+    elif isinstance(raw_wind, str) and raw_wind.strip().lower() in ("off", "none", "0"):
+        wind = 0.0
+    else:
+        try:
+            wind = float(raw_wind)
+        except (TypeError, ValueError):
+            return None, f"wind 必须是 0~1 的数字或布尔值，收到 {raw_wind!r}"
+        if not 0.0 <= wind <= 1.0:
+            return None, f"wind 必须在 0~1 之间，收到 {wind:g}"
+
+    opts = {
+        "path": path_name,
+        "seconds": seconds,
+        "fps": fps,
+        "width": width,
+        "height": height,
+        "light_from": light_from,
+        "light_to": light_to,
+        "wind": wind,
+    }
+
+    # Optional: dolly/crane travel in metres. 0.8 m is the hard ceiling -- beyond
+    # it the single-shell cloud leaves large holes in the frame.
+    raw_travel = data.get("travel", None)
+    if raw_travel not in (None, ""):
+        try:
+            travel = float(raw_travel)
+        except (TypeError, ValueError):
+            return None, "travel 必须是数字"
+        if not 0.0 <= travel <= pano_video.DOLLY_MAX_M:
+            return None, f"travel 必须在 0~{pano_video.DOLLY_MAX_M} 米之间"
+        opts["travel"] = travel
+
+    return opts, None
+
+
+def _video_purge() -> None:
+    """Drop finished job records older than the TTL (files are kept)."""
+    now = time.time()
+    with _VIDEO_LOCK:
+        for jid in [k for k, v in _VIDEO_JOBS.items()
+                    if v["state"] != "running"
+                    and now - (v.get("finished") or now) > _VIDEO_JOB_TTL]:
+            _VIDEO_JOBS.pop(jid, None)
+
+
+def _video_running() -> dict | None:
+    for job in _VIDEO_JOBS.values():
+        if job["state"] == "running":
+            return job
+    return None
+
+
+def _video_snapshot(job: dict) -> dict:
+    total = max(1, int(job.get("frames_total") or 1))
+    done = int(job.get("frames_done") or 0)
+    return {
+        "ok": True,
+        "job": job["id"],
+        "state": job["state"],
+        "progress": round(min(1.0, done / total), 4),
+        "frames_done": done,
+        "frames_total": total,
+        "url": job.get("url") or "",
+        "bytes": int(job.get("bytes") or 0),
+        "error": job.get("error") or "",
+        "scene": job.get("scene") or "",
+        "path": job.get("path") or "",
+        "elapsed": job.get("elapsed") or 0,
+    }
+
+
+def _video_worker(job_id: str, scene_dir: Path, opts: dict) -> None:
+    """Render one clip on a background thread (numpy, so the GIL is yielded)."""
+    def progress(done: int, total: int) -> None:
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            if job is not None:
+                job["frames_done"] = done
+                job["frames_total"] = total
+
+    def cancelled() -> bool:
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            return bool(job is not None and job["cancel"].is_set())
+
+    started = time.perf_counter()
+    try:
+        meta = pano_video.generate_video(
+            scene_dir, opts, progress_cb=progress, cancel_flag=cancelled,
+            out_dir=VIDEO_OUT)
+    except pano_video.PanoCancelled:
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            if job is not None:
+                job.update(state="cancelled", finished=time.time())
+    except Exception as exc:  # noqa: BLE001 - surfaced to the UI verbatim
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            if job is not None:
+                job.update(state="error", error=str(exc) or repr(exc),
+                           finished=time.time())
+    else:
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            if job is not None:
+                job.update(state="done", url=meta["url"], bytes=meta["bytes"],
+                           frames_done=meta["frames"], frames_total=meta["frames"],
+                           elapsed=meta.get("elapsed") or round(
+                               time.perf_counter() - started, 2),
+                           name=meta["name"], finished=time.time())
+    finally:
+        with _VIDEO_LOCK:
+            job = _VIDEO_JOBS.get(job_id)
+            if job is not None:
+                job.setdefault("finished", time.time())
+
+
+def _video_sweep_orphans() -> list[str]:
+    """Delete clips a hard kill left behind, i.e. ``.mp4`` with no sidecar.
+
+    The sidecar is written only after the encoder has closed the file, so a clip
+    without one never finished. This must run **once at startup** and never per
+    request: a render that is still in flight has no sidecar either.
+
+    Only ``*.mp4`` directly inside ``outputs/videos`` is considered -- no
+    recursion, no wildcard deletes, and every name goes through the same
+    whitelist the download route uses.
+    """
+    removed: list[str] = []
+    if not VIDEO_OUT.exists():
+        return removed
+    for p in VIDEO_OUT.glob("*.mp4"):
+        if not p.is_file() or not pano_video.is_valid_video_name(p.name):
+            continue
+        if pano_video.sidecar_path(p).exists():
+            continue
+        try:
+            p.unlink()
+        except OSError as exc:  # noqa: BLE001 - never block startup over this
+            print(f"[video] 无法清理残留 {p.name}: {exc}", flush=True)
+            continue
+        removed.append(p.name)
+    return removed
+
+
+@app.post("/api/world/video")
+def api_world_video_start():
+    """Start rendering an equirect MP4 from an existing scene's point cloud."""
+    _video_purge()
+    data = request.get_json(silent=True) or {}
+    opts, error = _video_opts(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    with _VIDEO_LOCK:
+        running = _video_running()
+        if running is not None:
+            return jsonify({
+                "ok": False,
+                "error": "已有一个全景视频在渲染，请等它结束或先取消",
+                "job": running["id"],
+            }), 409
+
+    try:
+        import av  # noqa: F401  - fail fast instead of after a 10 s render
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({
+            "ok": False,
+            "error": ("生成全景视频需要 PyAV（自带 ffmpeg/libx264）。"
+                      '请执行： venv\\Scripts\\python.exe -m pip install "av>=13.0.0"'
+                      f"（原始错误：{exc}）"),
+        }), 500
+
+    scene_dir = _scene_dir(str(data.get("scene")))
+    if scene_dir is None:  # re-checked: the dir could vanish between calls
+        return jsonify({"ok": False, "error": "场景不存在"}), 400
+
+    job_id = uuid.uuid4().hex[:12]
+    total = max(1, int(round(opts["seconds"] * opts["fps"])))
+    with _VIDEO_LOCK:
+        _VIDEO_JOBS[job_id] = {
+            "id": job_id,
+            "state": "running",
+            "scene": scene_dir.name,
+            "path": opts["path"],
+            "frames_done": 0,
+            "frames_total": total,
+            "url": "",
+            "bytes": 0,
+            "error": "",
+            "elapsed": 0.0,
+            "cancel": threading.Event(),
+            "started": time.time(),
+            "finished": None,
+        }
+    threading.Thread(target=_video_worker, args=(job_id, scene_dir, opts),
+                     name=f"pano-video-{job_id}", daemon=True).start()
+    return jsonify({"ok": True, "job": job_id, "frames_total": total,
+                    "path_label": _VIDEO_PATH_LABELS.get(opts["path"], "")})
+
+
+@app.get("/api/world/video/<job_id>")
+def api_world_video_status(job_id: str):
+    _video_purge()
+    with _VIDEO_LOCK:
+        job = _VIDEO_JOBS.get(job_id)
+        if job is None:
+            return jsonify({"ok": False, "error": "没有这个渲染任务"}), 404
+        return jsonify(_video_snapshot(job))
+
+
+@app.post("/api/world/video/<job_id>/cancel")
+def api_world_video_cancel(job_id: str):
+    with _VIDEO_LOCK:
+        job = _VIDEO_JOBS.get(job_id)
+        if job is None:
+            return jsonify({"ok": False, "error": "没有这个渲染任务"}), 404
+        job["cancel"].set()
+        state = job["state"]
+    return jsonify({"ok": True, "state": state, "message": "已发送取消指令"})
+
+
+@app.get("/api/world/videos")
+def api_world_videos():
+    """Finished clips in outputs/videos, newest first.
+
+    Only entries that carry a parseable sidecar are listed. A clip only gets its
+    sidecar after the encoder has closed the file, so this is exactly the "the
+    encode finished" test -- without it a mid-render (or killed) mp4 shows up as
+    a broken row that cannot be played.
+    """
+    _video_purge()
+    items = []
+    if VIDEO_OUT.exists():
+        mp4s = sorted(VIDEO_OUT.glob("*.mp4"),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+        for p in mp4s:
+            if not p.is_file() or not pano_video.is_valid_video_name(p.name):
+                continue
+            side = pano_video.sidecar_path(p)
+            if not side.is_file():
+                continue
+            try:
+                meta = json.loads(side.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(meta, dict) or not meta.get("name"):
+                continue
+            try:
+                size = p.stat().st_size
+            except OSError:
+                continue
+            items.append({
+                "name": p.name,
+                "url": f"/api/world/video-file/{p.name}",
+                "bytes": size,
+                "size": _human_size(size),
+                "scene": meta.get("scene", ""),
+                "path": meta.get("path", ""),
+                "path_label": meta.get("path_label")
+                              or _VIDEO_PATH_LABELS.get(meta.get("path", ""), ""),
+                "created": meta.get("created",""),
+                "seconds": meta.get("seconds", 0),
+                "fps": meta.get("fps", 0),
+                "width": meta.get("width", 0),
+                "height": meta.get("height", 0),
+            })
+    return jsonify({"ok": True, "items": items[:60]})
+
+
+@app.get("/api/world/video-file/<name>")
+def api_world_video_file(name: str):
+    """Serve a rendered clip. mp4-only whitelist plus a traversal check."""
+    if not pano_video.is_valid_video_name(name):
+        return jsonify({"ok": False, "error": "文件名不合法"}), 400
+    path = VIDEO_OUT / name
+    if not path.is_file():
+        return jsonify({"ok": False, "error": "视频不存在"}), 404
+    resp = send_from_directory(VIDEO_OUT, name, mimetype="video/mp4",
+                               conditional=True)
+    resp.headers["Accept-Ranges"] = "bytes"
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
 
 
 @app.get("/api/asset")
@@ -499,8 +868,12 @@ def api_health():
 
 
 def main() -> int:
-    for d in (STUDIO_OUT, UPLOAD_DIR, APP_DIR / "logs"):
+    for d in (STUDIO_OUT, UPLOAD_DIR, VIDEO_OUT, APP_DIR / "logs"):
         d.mkdir(parents=True, exist_ok=True)
+
+    # Anything without a sidecar is a clip a previous run never finished.
+    for orphan in _video_sweep_orphans():
+        print(f"[video] 清理未完成的视频: {orphan}", flush=True)
 
     # Under pythonw.exe both streams are None; redirect to a log file so that
     # print() never raises and the launcher has something to show on failure.

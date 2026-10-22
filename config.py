@@ -40,6 +40,7 @@ VENV_DIR: Path = ROOT / "venv"
 CACHE_DIR: Path = ROOT / "cache"
 TMP_DIR: Path = ROOT / "tmp"
 OUTPUT_DIR: Path = ROOT / "outputs"
+VIDEO_DIR: Path = OUTPUT_DIR / "videos"     # rendered 360 panorama clips (mp4)
 LOG_DIR: Path = ROOT / "logs"
 MODELS_DIR: Path = ROOT / "models"
 FLUX_DEV_DIR: Path = MODELS_DIR / "FLUX.1-dev"        # assembled diffusers components
@@ -231,7 +232,7 @@ REQUIRED_DIRS: List[Path] = [
     CACHE_DIR, HF_CACHE, HF_HUB_CACHE, HF_TRANSFORMERS_CACHE,
     TORCH_CACHE, TORCH_INDUCTOR_CACHE, PIP_CACHE, UV_CACHE, XDG_CACHE,
     MPL_CACHE, TRITON_CACHE, CONDA_PKGS_CACHE, MODELSCOPE_CACHE,
-    TMP_DIR, OUTPUT_DIR, LOG_DIR, MODELS_DIR, SR_DIR,
+    TMP_DIR, OUTPUT_DIR, VIDEO_DIR, LOG_DIR, MODELS_DIR, SR_DIR,
     VENDOR_DIR, SHIM_DIR, WHEELS_DIR, SCRIPTS_DIR, ENV_DIR, TOOLS_DIR,
 ]
 
@@ -524,7 +525,8 @@ def _render_requirements_win() -> str:
         "accelerate>=1.1.1", "safetensors", "sentencepiece", "einops",
         "timm>=1.0.15", "py360convert>=0.1.0", "pillow>=8.0.0",
         "opencv-python>=4.12.0.88", "open3d>=0.19.0", "trimesh>=4.6.1",
-        "scikit-image>=0.24.0", "scipy", "imageio", "matplotlib", "tqdm",
+        "scikit-image>=0.24.0", "scipy", "imageio", "av>=13.0.0",
+        "matplotlib", "tqdm",
         "plyfile", "huggingface_hub", "modelscope", "numpy",
         "flask>=3.0",
     ]:
