@@ -396,6 +396,10 @@
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   window.addEventListener('keydown', function (e) {
+    // Esc leaves the 360 player; a second Esc is a no-op (use the top-left
+    // link to return to the generation UI, since leaving the tab on a stray
+    // keypress would be hostile).
+    if (e.key === 'Escape' && mode === 'video') { exitVideo(); return; }
     keys[e.key.toLowerCase()] = true;
     if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].indexOf(e.key.toLowerCase()) >= 0) e.preventDefault();
   });

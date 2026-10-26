@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>世界漫游 · WorldGen Studio</title>
-<link rel="stylesheet" href="/static/world.css?v=3" />
+<link rel="stylesheet" href="/static/world.css?v=5" />
 </head>
 <body>
 <canvas id="stage"></canvas>
@@ -13,6 +13,11 @@
 
 <header class="hud top">
   <div class="title">
+    <a class="back" id="btnHome" href="/" title="返回主界面（Esc 退出播放）">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>
+      返回主界面
+    </a>
+    <span class="sep" aria-hidden="true"></span>
     <span class="dot"></span>
     <h1 id="sceneName">世界漫游</h1>
   </div>
@@ -115,6 +120,6 @@
 </footer>
 
 <script src="/static/vendor/three.min.js"></script>
-<script src="/static/world.js?v=7"></script>
+<script src="/static/world.js?v=8"></script>
 </body>
 </html>

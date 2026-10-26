@@ -56,6 +56,33 @@ html, body {
   color: var(--muted);
 }
 
+/* back to the generation UI -- kept in the title row so it never shifts
+   layout or collides with the left video panel. It carries its own dark
+   plate because the HUD has no scrim and a bright scene washes plain text
+   out completely. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(8, 12, 16, 0.62);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.back:hover {
+  border-color: rgba(94, 234, 212, 0.55);
+  background: rgba(8, 12, 16, 0.82);
+  color: #7fe0bb;
+}
+.back svg { width: 13px; height: 13px; }
+.sep { width: 1px; height: 14px; background: var(--line); }
+.title h1, .hint { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75); }
+
 .right { top: 22px; right: 22px; }
 .panel {
   min-width: 208px;
